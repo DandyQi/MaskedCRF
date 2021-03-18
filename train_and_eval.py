@@ -18,7 +18,7 @@ from tensorflow.python.estimator.run_config import RunConfig
 
 import modeling
 import optimization
-from data_processor import EnDataProcessor
+from data_processor import DataProcessor
 from evaluate_utils import evaluate
 from masked_crf import MaskedCRF
 
@@ -31,6 +31,8 @@ flags.DEFINE_string("bert_config_file", None, "Bert config file")
 flags.DEFINE_string("train_file", None, "Train data file")
 
 flags.DEFINE_string("test_files", None, "Test data files")
+
+flags.DEFINE_string("data_format", None, "Data format, support rows or cols")
 
 flags.DEFINE_integer("max_seq_length", 128, "Max sequence length")
 
@@ -271,11 +273,12 @@ def main(_):
 
     model_config = modeling.BertConfig.from_json_file(FLAGS.bert_config_file)
 
-    data_processor = EnDataProcessor(
+    data_processor = DataProcessor(
         train_file=FLAGS.train_file,
         test_files=FLAGS.test_files,
         max_seq_length=FLAGS.max_seq_length,
         vocab_file=FLAGS.vocab_file,
+        data_format=FLAGS.data_format,
         do_lower_case=FLAGS.do_lower_case
     )
 

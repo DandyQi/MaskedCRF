@@ -28,37 +28,62 @@ class InputFeature(object):
         self.label_ids = label_ids
 
 
-class EnDataProcessor(object):
-    def __init__(self, train_file, test_files, max_seq_length, vocab_file, do_lower_case=True):
+class DataProcessor(object):
+    def __init__(self, train_file, test_files, max_seq_length, vocab_file, data_format, do_lower_case=True):
         self.train_file = train_file
         self.test_files = None
         if len(test_files.split(",")) > 0:
             self.test_files = test_files.split(",")
         self.max_seq_length = max_seq_length
         self.tokenizer = tokenization.FullTokenizer(vocab_file=vocab_file, do_lower_case=do_lower_case)
+        self.data_format = data_format
 
         self.label2id_map, self.id2label_map = self.get_labels()
 
-    @staticmethod
-    def get_examples(input_file, shuffle):
+    def get_examples(self, input_file, shuffle):
         examples = []
-        seg_idx = 0
-        with tf.gfile.GFile(input_file, "r") as f:
-            line = f.readline().strip()
-            while line:
-                data = json.loads(line)
-                if "query" in data.keys() and "tags" in data.keys():
-                    query = [tokenization.convert_to_unicode(t) for t in data["query"]]
-                    label = [tokenization.convert_to_unicode(l) for l in data["tags"]]
-                    if len(query) == len(label):
-                        examples.append(InputExample(
-                            tokens=query,
-                            labels=label
-                        ))
-                        seg_idx += 1
-
+        if self.data_format == "rows":
+            with tf.gfile.GFile(input_file, "r") as f:
                 line = f.readline().strip()
-        f.close()
+                while line:
+                    data = json.loads(line)
+                    if "query" in data.keys() and "tags" in data.keys():
+                        query = [tokenization.convert_to_unicode(t) for t in data["query"]]
+                        label = [tokenization.convert_to_unicode(l) for l in data["tags"]]
+                        if len(query) == len(label):
+                            examples.append(InputExample(
+                                tokens=query,
+                                labels=label
+                            ))
+                    line = f.readline().strip()
+            f.close()
+        elif self.data_format == "cols":
+            with tf.gfile.GFile(input_file, "r") as f:
+                tokens, labels = [], []
+                while True:
+                    try:
+                        line = tokenization.convert_to_unicode(f.readline())
+                        if not line:
+                            break
+                        line = line.strip()
+                        if not line:
+                            examples.append(InputExample(
+                                tokens=tokens,
+                                labels=labels
+                            ))
+                            tokens = []
+                            labels = []
+
+                        parts = line.split("\t")
+                        if len(parts) == 2:
+                            tokens.append(parts[0])
+                            labels.append(parts[1])
+                    except UnicodeDecodeError:
+                        tokens.append("[UNK]")
+                        labels.append("O")
+            f.close()
+        else:
+            raise ValueError("No support data format: %s" % self.data_format)
         if shuffle:
             random.shuffle(examples)
         return examples
