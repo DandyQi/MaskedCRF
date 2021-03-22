@@ -13,6 +13,8 @@ An example of transition matrix and the decoded path for CRF / Masked CRF:
 
 For more detail, refer to our paper:
 
+[Masked Conditional Random Fields for Sequence Labeling](https://arxiv.org/abs/2103.10682)
+
 
 # Train and Evaluate
 This example code fine-tunes Bert + Masked-CRF on ATIS data sets.
@@ -62,13 +64,27 @@ python train_and_eval.py \
 
 # Performance
 
-|  Task   |  Bert-CRF  |  Bert-MCRF-Decoding  |  Bert-MCRF-Training  |
-|  ----  | ----  | ---- | ---- |
-| Resume  | 97.2 | 97.3 | 97.6 |
-| MSRA  | 95.5 | 95.6 | 95.9 |
-| Ontonotes  | 83.1 | 83.2 | 83.7 |
-| Weibo  | 71.9 | 72.2 | 72.4 |
-| ATIS  | 95.8 | 95.8 | 95.9 |
-| SNIPS  | 95.1 | 95.1 | 95.3 |
-| CoNLL2000 | 96.6 | 96.6 | 96.9 |
-| CoNLL2003 | 94.5 | - | 95.4 |
+|  Task   |  Bert-Softmax  |  Bert-CRF  |  Bert-MCRF-Decoding  |  Bert-MCRF-Training  |
+|  ----  | ----  | ---- | ---- | ---- |
+| Resume | 96.2 | 97.2 | 97.3 | 97.6 |
+| MSRA | 94.6 | 95.5 | 95.6 | 95.9 |
+| Ontonotes | 80.7 | 83.1 | 83.2 | 83.7 |
+| Weibo | 69.7 | 71.9 | 72.2 | 72.4 |
+| ATIS | 95.6 | 95.8 | 95.8 | 95.9 |
+| SNIPS | 93.5 | 95.1 | 95.1 | 95.3 |
+| CoNLL2000 | 96.3 | 96.6 | 96.6 | 96.9 |
+| CoNLL2003 | 90.4 | 90.6 | 91.2 | 91.7 |
+
+
+# Cite
+````
+@misc{
+    wei2021masked,
+    title={Masked Conditional Random Fields for Sequence Labeling}, 
+    author={Tianwen Wei and Jianwei Qi and Shenghuan He and Songtao Sun},
+    year={2021},
+    eprint={2103.10682},
+    archivePrefix={arXiv},
+    primaryClass={cs.LG}
+}
+````
