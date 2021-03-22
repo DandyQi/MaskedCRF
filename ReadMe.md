@@ -70,7 +70,7 @@ python train_and_eval.py \
 # Performance
 * Retain: Keep and retag the illegal segments.
 This strategy agrees with ([Sang et al., 2000](https://www.aclweb.org/anthology/W00-0726/)).
-* Discard: Discard the illegal segments completely.
+* Discard: Discard the illegal segments completely.
 * MCRF-decoding: A naive version of MCRF
 that does masking only in decoding. The training process is the same as that in conventional
 CRF.
