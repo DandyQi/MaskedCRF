@@ -1,17 +1,21 @@
 # Introduction
+Conditional Random Field (CRF) based neural models are among the most performant methods for solving sequence labeling problems. Despite its great success, CRF has the short- coming of occasionally generating illegal sequences of tags, e.g. sequences containing an
+“I-” tag immediately after an “O” tag, which is forbidden by the underlying BIO tagging scheme. 
+To tackle this problem, we propose Masked Conditional Random Field (Masked-CRF), an easy to implement variant CRF that masks illegal transitions during CRF training, eliminating illegal outcomes in a principled way.
 
-Masked Conditional Random Field (Masked-CRF) is an easy to implement variant CRF that impose restrictions on candidate paths during both training and decoding phases.
+The algorithm for our Masked CRF approach:
 
-Masked CRF approach, formally given in Algorithm 1.
 ![avatar](docs/pseudocode.png)
 
-An example of transition matrix and the decoded path for CRF / Masked CRF:
+An example of the transition matrix and the decoded path for CRF / Masked CRF:
 
 ![avatar](docs/masked_transition_matrix.png)
 
+An comparison of the decoded path for CRF / Masked CRF:
+
 ![avatar](docs/CRF_decode_path.png)
 
-For more detail, refer to our paper:
+More details can be found in our paper:
 
 [Masked Conditional Random Fields for Sequence Labeling](https://arxiv.org/abs/2103.10682)
 
@@ -68,6 +72,9 @@ python train_and_eval.py \
 ```
 
 # Performance
+The baseline models are the following:
+* BERT-tagger: The output of the final hidden representation of BERT for to each token is fed into a classification layer over the label set without using CRF.
+* BERT-CRF: BERT followed by a conventional CRF layer.
 * Retain: Keep and retag the illegal segments.
 This strategy agrees with ([Sang et al., 2000](https://www.aclweb.org/anthology/W00-0726/)).
 * Discard: Discard the illegal segments completely.
@@ -89,7 +96,7 @@ maintained in the training
 | CoNLL2003 | 90.1 | 90.4 | 90.4 | 90.6 | 91.2 | 91.7 |
 
 
-# Cite
+# Citation
 ````
 @misc{
     wei2021masked,
