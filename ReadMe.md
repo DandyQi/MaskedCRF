@@ -1,4 +1,4 @@
-# Masked-CRF
+# Introduction
 
 Masked Conditional Random Field (Masked-CRF) is an easy to implement variant CRF that impose restrictions on candidate paths during both training and decoding phases.
 
