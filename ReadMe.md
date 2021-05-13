@@ -7,7 +7,7 @@ The algorithm for our Masked CRF approach:
 
 ![avatar](docs/pseudocode.png)
 
-An example of the transition matrix and the decoded path for CRF / Masked CRF:
+An example of the masked transition matrix:
 
 ![avatar](docs/masked_transition_matrix.png)
 
