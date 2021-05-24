@@ -98,13 +98,19 @@ maintained in the training
 
 # Citation
 ````
-@misc{
-    wei2021masked,
-    title={Masked Conditional Random Fields for Sequence Labeling}, 
-    author={Tianwen Wei and Jianwei Qi and Shenghuan He and Songtao Sun},
-    year={2021},
-    eprint={2103.10682},
-    archivePrefix={arXiv},
-    primaryClass={cs.LG}
+@inproceedings{wei-etal-2021-masked,
+    title = "Masked Conditional Random Fields for Sequence Labeling",
+    author = "Wei, Tianwen  and
+      Qi, Jianwei  and
+      He, Shenghuan  and
+      Sun, Songtao",
+    booktitle = "Proceedings of the 2021 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies",
+    month = jun,
+    year = "2021",
+    address = "Online",
+    publisher = "Association for Computational Linguistics",
+    url = "https://www.aclweb.org/anthology/2021.naacl-main.163",
+    pages = "2024--2035",
+    abstract = "Conditional Random Field (CRF) based neural models are among the most performant methods for solving sequence labeling problems. Despite its great success, CRF has the shortcoming of occasionally generating illegal sequences of tags, e.g. sequences containing an {``}I-{''} tag immediately after an {``}O{''} tag, which is forbidden by the underlying BIO tagging scheme. In this work, we propose Masked Conditional Random Field (MCRF), an easy to implement variant of CRF that impose restrictions on candidate paths during both training and decoding phases. We show that the proposed method thoroughly resolves this issue and brings significant improvement over existing CRF-based models with near zero additional cost.",
 }
 ````
