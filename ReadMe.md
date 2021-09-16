@@ -21,7 +21,7 @@ More details can be found in our paper:
 
 
 # Train and Evaluate
-This example code fine-tunes Bert + Masked-CRF on ATIS data sets.
+This example code `grid_search.sh` fine-tunes Bert + Masked-CRF on RESUME data sets.
 
 `train_mask`: whether to use Masked-CRF during training
 
@@ -32,43 +32,42 @@ This example code fine-tunes Bert + Masked-CRF on ATIS data sets.
 
 For BIO format data file, such as `Resume`
 ```bash
-python train_and_eval.py \
-    --bert_config_file=conf/bert_config.json \
-    --train_file=data/resume/train.char.bio \
-    --test_files=data/resume/dev.char.bio,data/resume/test.char.bio \
-    --data_format=cols \
-    --max_seq_length=128 \
-    --vocab_file=conf/vocab.txt \
-    --do_lower_case=True \
-    --output_dir=model/resume \
-    --min_train_steps=1000 \
-    --learning_rate=2e-5 \
-    --do_train=True \
-    --do_eval=True \
-    --train_mask=True \
-    --eval_mask=True \
-    --lr_decay=1.0
+for lr in '5e-5' '2e-5' '1e-5'
+do
+    for decay in '1.0' '0.75' '0.5'
+    do
+        for i in 0 1 2
+        do
+            python train_and_eval.py \
+                --bert_config_file=conf/bert_config.json \
+                --init_checkpoint=model/roberta/bert_model.ckpt \
+                --train_file=data/resume/train.char.bio \
+                --dev_file=data/resume/dev.char.bio \
+                --test_file=data/resume/test.char.bio \
+                --data_format=bio \
+                --max_seq_length=128 \
+                --epoch_num=3 \
+                --train_batch_size=32 \
+                --vocab_file=conf/vocab.txt \
+                --do_lower_case=True \
+                --output_dir=model/resume-grid-search/lr-${lr}-decay-${decay}-ex-${i} \
+                --min_train_steps=10000 \
+                --learning_rate=${lr} \
+                --train_mask=True \
+                --eval_mask=True \
+                --lr_decay=${decay} \
+                --gpu_idx=3
+        done
+    done
+done
 ```
 
-For JSON format data file, such as `ATIS`
+After training, `summary.py` will summarize the results as follow:
 
-```bash
-python train_and_eval.py \
-    --bert_config_file=conf/uncased_bert_config.json \
-    --train_file=data/atis/train.txt \
-    --test_files=data/atis/dev.txt,data/atis/test.txt \
-    --data_format=rows \
-    --max_seq_length=128 \
-    --vocab_file=conf/uncased_vocab.txt \
-    --do_lower_case=True \
-    --output_dir=model/tmp \
-    --min_train_steps=1000 \
-    --learning_rate=2e-5 \
-    --do_train=True \
-    --do_eval=True \
-    --train_mask=True \
-    --eval_mask=True \
-    --lr_decay=1.0
+```text
+Max dev: 96.34
+Max test: 97.44
+Max dev's test: 97.05
 ```
 
 # Performance

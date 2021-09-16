@@ -8,6 +8,7 @@
 
 import glob
 import json
+import logging
 import os
 import shutil
 import time
@@ -22,6 +23,10 @@ from data_processor import DataProcessor
 from evaluate_utils import evaluate
 from masked_crf import MaskedCRF
 
+logger = logging.getLogger()
+while logger.handlers:
+    logger.handlers.pop()
+
 flags = tf.flags
 
 FLAGS = flags.FLAGS
@@ -30,7 +35,9 @@ flags.DEFINE_string("bert_config_file", None, "Bert config file")
 
 flags.DEFINE_string("train_file", None, "Train data file")
 
-flags.DEFINE_string("test_files", None, "Test data files")
+flags.DEFINE_string("dev_file", None, "Dev data file")
+
+flags.DEFINE_string("test_file", None, "Test data file")
 
 flags.DEFINE_string("data_format", None, "Data format, support rows or cols")
 
@@ -54,15 +61,13 @@ flags.DEFINE_integer("min_train_steps", 10000, "Map train steps")
 
 flags.DEFINE_float("learning_rate", 2e-5, "Learning rate")
 
-flags.DEFINE_bool("do_train", False, "Whether to train")
-
-flags.DEFINE_bool("do_eval", False, "Whether to evaluate")
-
 flags.DEFINE_float("lr_decay", 1.0, "Learning rate decay factor")
 
 flags.DEFINE_bool("train_mask", False, "Whether to mask when train")
 
 flags.DEFINE_bool("eval_mask", False, "Whether to mask when evaluate")
+
+flags.DEFINE_string("gpu_idx", "0", "GPU idx")
 
 
 class BestCheckpointsExporter(tf.estimator.BestExporter):
@@ -269,13 +274,17 @@ def construct_estimator(output_dir, save_checkpoint_steps, model_config, init_ch
 
 
 def main(_):
+    os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+    os.environ["CUDA_VISIBLE_DEVICES"] = FLAGS.gpu_idx
+
     tf.logging.set_verbosity(tf.logging.INFO)
 
     model_config = modeling.BertConfig.from_json_file(FLAGS.bert_config_file)
 
     data_processor = DataProcessor(
         train_file=FLAGS.train_file,
-        test_files=FLAGS.test_files,
+        dev_file=FLAGS.dev_file,
+        test_file=FLAGS.test_file,
         max_seq_length=FLAGS.max_seq_length,
         vocab_file=FLAGS.vocab_file,
         data_format=FLAGS.data_format,
@@ -286,7 +295,7 @@ def main(_):
     tf.gfile.MakeDirs(output_dir)
 
     # Loading data from input files
-    train_examples = data_processor.get_train_examples()
+    train_examples = data_processor.train_examples
     num_train_steps = max(int(len(train_examples) / FLAGS.train_batch_size * FLAGS.epoch_num), FLAGS.min_train_steps)
     save_checkpoint_steps = int(num_train_steps / 10)
 
@@ -296,10 +305,16 @@ def main(_):
     tf.logging.info("  Num steps = %d", num_train_steps)
     tf.logging.info("  Num save checkpoint steps = %d", save_checkpoint_steps)
 
-    test_examples = data_processor.get_test_examples()
+    dev_examples = data_processor.dev_examples
+
+    tf.logging.info("***** Dev Examples *****")
+    tf.logging.info("  Num examples = %d", len(dev_examples))
+    tf.logging.info("  Batch size = %d", FLAGS.eval_batch_size)
+
+    test_examples = data_processor.test_examples
 
     tf.logging.info("***** Test Examples *****")
-    tf.logging.info("  Num examples = %s", " / ".join([str(len(x)) for x in test_examples]))
+    tf.logging.info("  Num examples = %d", len(test_examples))
     tf.logging.info("  Batch size = %d", FLAGS.eval_batch_size)
 
     # Writing data to data files with feature format
@@ -309,119 +324,132 @@ def main(_):
         output_file=train_file
     )
 
-    test_files = []
-    for idx, test_example in enumerate(test_examples):
-        test_file = os.path.join(output_dir, "test_%d.tf_record" % idx)
-        data_processor.file_based_convert_examples_to_features(
-            examples=test_example,
-            output_file=test_file
+    dev_file = os.path.join(output_dir, "dev.tf_record")
+    data_processor.file_based_convert_examples_to_features(
+        examples=dev_examples,
+        output_file=dev_file
+    )
+
+    test_file = os.path.join(output_dir, "test.tf_record")
+    data_processor.file_based_convert_examples_to_features(
+        examples=test_examples,
+        output_file=test_file
+    )
+
+    # Building input_fn
+    train_input_fn = data_processor.file_based_input_fn_builder(
+        input_file=train_file,
+        is_training=True
+    )
+
+    dev_input_fn = data_processor.file_based_input_fn_builder(
+        input_file=dev_file,
+        is_training=False
+    )
+
+    test_input_fn = data_processor.file_based_input_fn_builder(
+        input_file=test_file,
+        is_training=False
+    )
+
+    tf.logging.info("Label list: %s" % " ".join(list(data_processor.label2id_map.keys())))
+    tf.logging.info("Label num: %d" % len(data_processor.label2id_map))
+
+    # Building graph
+    estimator = construct_estimator(
+        output_dir=output_dir,
+        save_checkpoint_steps=save_checkpoint_steps,
+        model_config=model_config,
+        init_checkpoint=FLAGS.init_checkpoint,
+        learning_rate=FLAGS.learning_rate,
+        lr_decay=FLAGS.lr_decay,
+        max_seq_length=FLAGS.max_seq_length,
+        use_mask=FLAGS.train_mask,
+        label2idx_map=data_processor.label2id_map,
+        num_output=len(data_processor.label2id_map),
+        train_batch_size=FLAGS.train_batch_size,
+        eval_batch_size=FLAGS.eval_batch_size
+    )
+    best_checkpoint_dir = os.path.join(output_dir, "best_checkpoint")
+    tf.gfile.MakeDirs(best_checkpoint_dir)
+
+    best_ckpt_exporter = BestCheckpointsExporter(
+        serving_input_receiver_fn=serving_fn,
+        best_checkpoint_path=best_checkpoint_dir,
+        compare_fn=_loss_smaller
+    )
+
+    # Constructing spec
+    train_spec = tf.estimator.TrainSpec(
+        input_fn=train_input_fn,
+        max_steps=num_train_steps,
+    )
+    test_spec = tf.estimator.EvalSpec(
+        input_fn=dev_input_fn,
+        steps=None,
+        start_delay_secs=60,
+        throttle_secs=60,
+        exporters=best_ckpt_exporter
+    )
+
+    tf.estimator.train_and_evaluate(
+        estimator=estimator,
+        train_spec=train_spec,
+        eval_spec=test_spec
+    )
+
+    best_checkpoint_dir = os.path.join(output_dir, "best_checkpoint")
+    if os.path.exists(best_checkpoint_dir):
+        with tf.gfile.GFile(os.path.join(best_checkpoint_dir, "best_checkpoint.txt"), "r") as fin:
+            best_checkpoint = json.loads(fin.readline())["best_checkpoint_path"]
+        fin.close()
+    else:
+        best_checkpoint = FLAGS.init_checkpoint
+
+    tf.logging.info("***** Evaluate on the best checkpoint: %s *****" % best_checkpoint)
+
+    best_estimator = construct_estimator(
+        output_dir=best_checkpoint_dir,
+        save_checkpoint_steps=save_checkpoint_steps,
+        model_config=model_config,
+        init_checkpoint=best_checkpoint,
+        learning_rate=FLAGS.learning_rate,
+        lr_decay=FLAGS.lr_decay,
+        max_seq_length=FLAGS.max_seq_length,
+        use_mask=FLAGS.eval_mask,
+        label2idx_map=data_processor.label2id_map,
+        num_output=len(data_processor.label2id_map),
+        train_batch_size=FLAGS.train_batch_size,
+        eval_batch_size=FLAGS.eval_batch_size
+    )
+
+    with tf.gfile.GFile(os.path.join(output_dir, "result_summary.txt"), "w") as writer:
+        dev_results = best_estimator.predict(dev_input_fn, yield_single_examples=True)
+        dev_metrics = evaluate(
+            result=dev_results,
+            id2label=data_processor.id2label_map,
+            tokenizer=data_processor.tokenizer,
+            predict_detail_file=os.path.join(output_dir, "dev_result.txt")
         )
-        test_files.append(test_file)
 
-    label2id_map, id2label_map = data_processor.get_labels()
-    tf.logging.info("Label list: %s" % " ".join(list(label2id_map.keys())))
-    tf.logging.info("Label num: %d" % len(label2id_map))
-
-    if FLAGS.do_train:
-        # Building graph
-        estimator = construct_estimator(
-            output_dir=output_dir,
-            save_checkpoint_steps=save_checkpoint_steps,
-            model_config=model_config,
-            init_checkpoint=FLAGS.init_checkpoint,
-            learning_rate=FLAGS.learning_rate,
-            lr_decay=FLAGS.lr_decay,
-            max_seq_length=FLAGS.max_seq_length,
-            use_mask=FLAGS.train_mask,
-            label2idx_map=label2id_map,
-            num_output=len(label2id_map),
-            train_batch_size=FLAGS.train_batch_size,
-            eval_batch_size=FLAGS.eval_batch_size
-        )
-        best_checkpoint_dir = os.path.join(output_dir, "best_checkpoint")
-        tf.gfile.MakeDirs(best_checkpoint_dir)
-
-        best_ckpt_exporter = BestCheckpointsExporter(
-            serving_input_receiver_fn=serving_fn,
-            best_checkpoint_path=best_checkpoint_dir,
-            compare_fn=_loss_smaller
+        test_results = best_estimator.predict(test_input_fn, yield_single_examples=True)
+        test_metrics = evaluate(
+            result=test_results,
+            id2label=data_processor.id2label_map,
+            tokenizer=data_processor.tokenizer,
+            predict_detail_file=os.path.join(output_dir, "test_result.txt")
         )
 
-        # Building input_fn
-        train_input_fn = data_processor.file_based_input_fn_builder(
-            input_file=train_file,
-            is_training=True
-        )
+        writer.write("%s" % json.dumps({
+            "dev": dev_metrics,
+            "test": test_metrics
+        }))
 
-        test_input_fn_list = []
-        for test_file in test_files:
-            test_input_fn = data_processor.file_based_input_fn_builder(
-                input_file=test_file,
-                is_training=False
-            )
-            test_input_fn_list.append(test_input_fn)
+        tf.logging.info("***** Evaluate metrics *****")
+        tf.logging.info("Dev: %s" % dev_metrics)
+        tf.logging.info("Test: %s" % test_metrics)
 
-        # Constructing spec
-        train_spec = tf.estimator.TrainSpec(
-            input_fn=train_input_fn,
-            max_steps=num_train_steps,
-        )
-        test_spec = tf.estimator.EvalSpec(
-            input_fn=test_input_fn_list[0],
-            steps=None,
-            start_delay_secs=60,
-            throttle_secs=60,
-            exporters=best_ckpt_exporter
-        )
-
-        tf.estimator.train_and_evaluate(
-            estimator=estimator,
-            train_spec=train_spec,
-            eval_spec=test_spec
-        )
-
-    if FLAGS.do_eval:
-        best_checkpoint_dir = os.path.join(output_dir, "best_checkpoint")
-        if os.path.exists(best_checkpoint_dir):
-            with tf.gfile.GFile(os.path.join(best_checkpoint_dir, "best_checkpoint.txt"), "r") as fin:
-                best_checkpoint = json.loads(fin.readline())["best_checkpoint_path"]
-            fin.close()
-        else:
-            best_checkpoint = FLAGS.init_checkpoint
-
-        tf.logging.info("***** Evaluate on the best checkpoint: %s *****" % best_checkpoint)
-
-        best_estimator = construct_estimator(
-            output_dir=best_checkpoint_dir,
-            save_checkpoint_steps=save_checkpoint_steps,
-            model_config=model_config,
-            init_checkpoint=best_checkpoint,
-            learning_rate=FLAGS.learning_rate,
-            lr_decay=FLAGS.lr_decay,
-            max_seq_length=FLAGS.max_seq_length,
-            use_mask=FLAGS.eval_mask,
-            label2idx_map=label2id_map,
-            num_output=len(label2id_map),
-            train_batch_size=FLAGS.train_batch_size,
-            eval_batch_size=FLAGS.eval_batch_size
-        )
-
-        for idx, test_file in enumerate(test_files):
-            test_input_fn = data_processor.file_based_input_fn_builder(
-                input_file=test_file,
-                is_training=False
-            )
-
-            result = best_estimator.predict(test_input_fn, yield_single_examples=True)
-            eval_result_file = os.path.join(output_dir, "eval_result_%d.txt" % idx)
-            predict_detail_file = os.path.join(output_dir, "predict_detail_%d.txt" % idx)
-            evaluate(
-                result=result,
-                id2label=id2label_map,
-                eval_result_file=eval_result_file,
-                predict_detail_file=predict_detail_file,
-                tokenizer=data_processor.tokenizer
-            )
+    writer.close()
 
 
 if __name__ == '__main__':

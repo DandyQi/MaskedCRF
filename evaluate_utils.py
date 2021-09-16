@@ -11,7 +11,7 @@ import tensorflow as tf
 from collections import defaultdict
 
 
-def evaluate(result, id2label, eval_result_file, predict_detail_file, tokenizer, verbose=False):
+def evaluate(result, id2label, predict_detail_file, tokenizer, verbose=False):
     truth_tags = []
     predict_tags = []
     with tf.gfile.GFile(predict_detail_file, "w") as fout:
@@ -37,13 +37,7 @@ def evaluate(result, id2label, eval_result_file, predict_detail_file, tokenizer,
 
     precision, recall, f1 = get_metrics(true_seqs=truth_tags, pred_seqs=predict_tags, verbose=verbose)
 
-    with tf.gfile.GFile(eval_result_file, "w") as fout:
-        fout.write("%s" % json.dumps({
-            "f1": f1,
-            "precision": precision,
-            "recall": recall
-        }))
-    fout.close()
+    return {"precision": precision, "recall": recall, "f1": f1}
 
 
 def filter_padding(inputs, masks, valid_idx=1):
