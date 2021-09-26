@@ -29,20 +29,23 @@ class InputFeature(object):
 
 
 class DataProcessor(object):
-    def __init__(self, train_file, test_files, max_seq_length, vocab_file, data_format, do_lower_case=True):
-        self.train_file = train_file
-        self.test_files = None
-        if len(test_files.split(",")) > 0:
-            self.test_files = test_files.split(",")
+    def __init__(self, train_file, dev_file, test_file, max_seq_length, vocab_file, data_format, do_lower_case=True):
         self.max_seq_length = max_seq_length
         self.tokenizer = tokenization.FullTokenizer(vocab_file=vocab_file, do_lower_case=do_lower_case)
         self.data_format = data_format
+
+        self.train_examples = self.get_examples(train_file, True)
+        self.dev_examples = self.get_examples(dev_file, False)
+        self.test_examples = self.get_examples(test_file, False)
 
         self.label2id_map, self.id2label_map = self.get_labels()
 
     def get_examples(self, input_file, shuffle):
         examples = []
-        if self.data_format == "rows":
+        if input_file is None:
+            return examples
+
+        if self.data_format == "json":
             with tf.gfile.GFile(input_file, "r") as f:
                 line = f.readline().strip()
                 while line:
@@ -57,7 +60,7 @@ class DataProcessor(object):
                             ))
                     line = f.readline().strip()
             f.close()
-        elif self.data_format == "cols":
+        elif self.data_format == "bio":
             with tf.gfile.GFile(input_file, "r") as f:
                 tokens, labels = [], []
                 while True:
@@ -90,9 +93,7 @@ class DataProcessor(object):
 
     def get_labels(self):
         label_set = {"[CLS]", "[SEP]"}
-        all_examples = self.get_train_examples()
-        for test_examples in self.get_test_examples():
-            all_examples += test_examples
+        all_examples = self.train_examples + self.dev_examples + self.test_examples
 
         for example in all_examples:
             labels = example.labels
@@ -113,19 +114,6 @@ class DataProcessor(object):
             id2label_map[idx] = label
 
         return label2id_map, id2label_map
-
-    def get_train_examples(self):
-        examples = self.get_examples(self.train_file, True)
-        return examples
-
-    def get_test_examples(self):
-        if self.test_files is None:
-            return []
-        test_examples = []
-        for f in self.test_files:
-            examples = self.get_examples(f, False)
-            test_examples.append(examples)
-        return test_examples
 
     def convert_single_example_to_feature(self, ex_idx, example):
         raw_tokens = example.tokens
@@ -148,6 +136,8 @@ class DataProcessor(object):
             input_masks += [0] * (self.max_seq_length - input_ids_length)
             label_ids += [0] * (self.max_seq_length - input_ids_length)
         else:
+            tf.logging.debug("Sequence truncated: %s, length: %d"
+                             % (" ".join([tokenization.printable_text(x) for x in tokens]), len(tokens)))
             input_ids = input_ids[:self.max_seq_length]
             input_masks = input_masks[:self.max_seq_length]
             label_ids = label_ids[:self.max_seq_length]
